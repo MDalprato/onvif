@@ -11,11 +11,11 @@
  *
  */
 
-var IP_RANGE_START = '192.168.1.1',
-	IP_RANGE_END = '192.168.1.1',
+var IP_RANGE_START = '192.168.5.10',
+	IP_RANGE_END = '192.168.5.150',
 	PORT_LIST = [80],
 	USERNAME = 'admin',
-	PASSWORD = 'admin';
+	PASSWORD = 'Abcd123$';
 
 var Cam = require('../lib/onvif').Cam;
 var flow = require('nimble');
