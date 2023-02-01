@@ -14,21 +14,23 @@
  * Licenced under the MIT Open Source Licence
  *
  */
+var request = require('request');
+const { promisify } = require("util");
 
-let HOSTNAME = '192.168.1.15',
+let HOSTNAME = '192.168.5.89',
 	PORT = 80,
-	USERNAME = 'admin',
-	PASSWORD = 'pass';
+	USERNAME = 'service',
+	PASSWORD = 'Abcd123$';
 
 
-const EventMethodTypes = { PULL: "pull", SUBSCRIBE: "subscribe" }
+const EventMethodTypes = { PULL: "pull", SUBSCRIBE: "subscribe"}
 
-let EVENT_RECEIVER_IP_ADDRESS = '192.168.1.70'; // the IP Address and Port for a HTTP Server that the camera will send events to. Change this.
+let EVENT_RECEIVER_IP_ADDRESS = '192.168.5.89'; // the IP Address and Port for a HTTP Server that the camera will send events to. Change this.
 let EVENT_RECEIVER_PORT = 8086;
 
 // PICK WHICH EVENT METHOD TOUSE
-// let EVENT_MODE = EventMethodTypes.PULL;     // <- PICK ONE
-let EVENT_MODE = EventMethodTypes.SUBSCRIBE;     // <- PICK ONE
+ let EVENT_MODE = EventMethodTypes.PULL;     // <- PICK ONE
+//let EVENT_MODE = EventMethodTypes.SUBSCRIBE;     // <- PICK ONE
 
 
 
@@ -209,6 +211,12 @@ new Cam({
 
 				cam_obj.on('event', (camMessage, xml) => {
 
+					const promiseGetSnapshotUri = promisify(cam_obj.getSnapshotUri).bind(cam_obj);
+
+					console.log(promiseGetSnapshotUri)
+
+					
+
 					// Extract Event Details
 					// Events have a Topic
 					// Events have (optionally) a Source, a Key and Data fields
@@ -328,6 +336,38 @@ function processEvent(eventTime,eventTopic,eventProperty,sourceName,sourceValue,
 	if (typeof(dataName) !== "undefined" && typeof(dataValue) !== "undefined") {
 		output += ` DATA:${dataName}=${dataValue}`
 	}
-	console.log(output)
+	console.log(output);
+	sendToArteco(eventTopic);
 }
 
+
+
+function sendToArteco(onvifInfo){
+
+
+	const data = {
+		"lane": "manageEvent",
+		"data": {
+				"ctx": "liveEvent",
+				"chId": 10,
+				"param": onvifInfo,
+				"brand": "Onvif",
+				"data": onvifInfo,
+				"image": "",
+				"cat": 200
+		}
+	}
+	
+	
+		request.post({
+			headers: {'content-type' : 'application/json'},
+			url:     'https://arteco1020.lan.omniaweb.cloud:496/api/v2/event',
+			body:    JSON.stringify(data)
+		}, function(error, response, body){
+			console.log(body);
+			console.log(response);
+	
+		});
+		
+	
+	}
