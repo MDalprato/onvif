@@ -23,13 +23,13 @@ let HOSTNAME = '192.168.5.89',
 	PASSWORD = 'Abcd123$';
 
 
-const EventMethodTypes = { PULL: "pull", SUBSCRIBE: "subscribe"}
+const EventMethodTypes = { PULL: "pull", SUBSCRIBE: "subscribe" }
 
 let EVENT_RECEIVER_IP_ADDRESS = '192.168.5.89'; // the IP Address and Port for a HTTP Server that the camera will send events to. Change this.
 let EVENT_RECEIVER_PORT = 8086;
 
 // PICK WHICH EVENT METHOD TOUSE
- let EVENT_MODE = EventMethodTypes.PULL;     // <- PICK ONE
+let EVENT_MODE = EventMethodTypes.PULL;     // <- PICK ONE
 //let EVENT_MODE = EventMethodTypes.SUBSCRIBE;     // <- PICK ONE
 
 
@@ -53,33 +53,33 @@ let server = null;
 
 if (EVENT_MODE == EventMethodTypes.SUBSCRIBE) {
 	// Create a HTTP Server to receive Events
-        server = http.createServer(function(request, response) {
-	let body = '';
-	request.on('data', chunk => {
-		body += chunk;
-	})
-	request.on('end', () => {
-		//end of data
-		if (request.method == "POST") {
-			console.log('HTTP POST Message received on ' + request.url);
-			console.log(body);
-			console.log('');
-			response.writeHead(200, { "Content-Type": "text\plain" });
-			response.end("received POST request.");
-			return;
-		}
-		else {
-			console.log('Unexpected connect to HTTP Server to ' + request.url);
-			response.writeHead(200, { "Content-Type": "text\plain" });
-			response.end("Undefined request .");
-			return;
-		}
-	})
+	server = http.createServer(function (request, response) {
+		let body = '';
+		request.on('data', chunk => {
+			body += chunk;
+		})
+		request.on('end', () => {
+			//end of data
+			if (request.method == "POST") {
+				console.log('HTTP POST Message received on ' + request.url);
+				console.log(body);
+				console.log('');
+				response.writeHead(200, { "Content-Type": "text\plain" });
+				response.end("received POST request.");
+				return;
+			}
+			else {
+				console.log('Unexpected connect to HTTP Server to ' + request.url);
+				response.writeHead(200, { "Content-Type": "text\plain" });
+				response.end("Undefined request .");
+				return;
+			}
+		})
 
-  });
+	});
 
-  server.listen(EVENT_RECEIVER_PORT);
-  console.log("Server running on port " + EVENT_RECEIVER_PORT);
+	server.listen(EVENT_RECEIVER_PORT);
+	console.log("Server running on port " + EVENT_RECEIVER_PORT);
 }
 
 
@@ -91,7 +91,7 @@ new Cam({
 	port: PORT,
 	timeout: 10000,
 	preserveAddress: true   // Enables NAT support and re-writes for PullPointSubscription URL
-}, function CamFunc(err) {
+}, async function CamFunc(err) {
 	if (err) {
 		console.log(err);
 		return;
@@ -101,28 +101,68 @@ new Cam({
 
 	let cam_obj = this;
 
+
+
+	// Use Promisify that was added to Nodev8
+
+	const promiseGetSystemDateAndTime = promisify(cam_obj.getSystemDateAndTime).bind(cam_obj);
+	const promiseGetDeviceInformation = promisify(cam_obj.getDeviceInformation).bind(cam_obj);
+	const promiseGetProfiles = promisify(cam_obj.getProfiles).bind(cam_obj);
+	const promiseGetSnapshotUri = promisify(cam_obj.getSnapshotUri).bind(cam_obj);
+	const promiseGetStreamUri = promisify(cam_obj.getStreamUri).bind(cam_obj);
+
+	// Use Promisify to convert ONVIF Library calls into Promises.
+	let gotDate = await promiseGetSystemDateAndTime();
+	let gotInfo = await promiseGetDeviceInformation();
+
+	let videoResults = "";
+	let profiles = await promiseGetProfiles();
+	for (const profile of profiles) {
+		// wrap each URI Stream request in a Try/Catch as some requests (eg for multicast) may return an error
+		// the alternative would be a Promise.Then.Catch and wait for each Promise to complete(resolve)
+		videoResults += "Profile: Name=" + profile.name + " Token=" + profile.$.token + " VideoSource=" + profile.videoSourceConfiguration.name + "\r\n"
+
+		try {
+			videoResults += "SNAPSHOT URL   ";
+			let snapshotUri = await promiseGetSnapshotUri(
+				{
+					profileToken: profile.$.token,
+				});
+			videoResults += profile.name + " " + "JPEG" + " "
+				+ profile.videoEncoderConfiguration.resolution.width + "x" + profile.videoEncoderConfiguration.resolution.height + " " + snapshotUri.uri + "\r\n";
+
+		} catch (err) {
+			videoResults += profile.name + " not supported\r\n";
+		}
+
+	}
+
+
+
 	let hasEvents = false;
 	let hasTopics = false;
 
+
+
 	// Use Nimble's flow to execute ONVIF commands in sequence
 	flow.series([
-		function(callback) {
-			cam_obj.getDeviceInformation(function(err, info, xml) {
-				if (!err) {console.log('Manufacturer  ' + info.manufacturer);}
-				if (!err) {console.log('Model         ' + info.model);}
-				if (!err) {console.log('Firmware      ' + info.firmwareVersion);}
-				if (!err) {console.log('Serial Number ' + info.serialNumber);}
+		function (callback) {
+			cam_obj.getDeviceInformation(function (err, info, xml) {
+				if (!err) { console.log('Manufacturer  ' + info.manufacturer); }
+				if (!err) { console.log('Model         ' + info.model); }
+				if (!err) { console.log('Firmware      ' + info.firmwareVersion); }
+				if (!err) { console.log('Serial Number ' + info.serialNumber); }
 				callback();
 			});
 		},
-		function(callback) {
-			cam_obj.getSystemDateAndTime(function(err, date, xml) {
-				if (!err) {console.log('Device Time   ' + date);}
+		function (callback) {
+			cam_obj.getSystemDateAndTime(function (err, date, xml) {
+				if (!err) { console.log('Device Time   ' + date); }
 				callback();
 			});
 		},
-		function(callback) {
-			cam_obj.getCapabilities(function(err, data, xml) {
+		function (callback) {
+			cam_obj.getCapabilities(function (err, data, xml) {
 				if (err) {
 					console.log(err);
 				}
@@ -147,29 +187,29 @@ new Cam({
 				callback();
 			})
 		},
-		function(callback) {
+		function (callback) {
 			if (hasEvents) {
-				cam_obj.getEventProperties(function(err, data, xml) {
+				cam_obj.getEventProperties(function (err, data, xml) {
 					if (err) {
 						console.log(err);
 					} else {
 						// Display the available Topics
-						let parseNode = function(node, topicPath) {
+						let parseNode = function (node, topicPath) {
 							// loop over all the child nodes in this node
 							for (const child in node) {
-								if (child == "$") {continue;} else if (child == "messageDescription") {
+								if (child == "$") { continue; } else if (child == "messageDescription") {
 									// we have found the details that go with an event
 									// examine the messageDescription
 									let IsProperty = false;
 									let source = '';
 									let data = '';
-									if (node[child].$ && node[child].$.IsProperty) {IsProperty = node[child].$.IsProperty}
-									if (node[child].source) {source = JSON.stringify(node[child].source)}
-									if (node[child].data) {data = JSON.stringify(node[child].data)}
+									if (node[child].$ && node[child].$.IsProperty) { IsProperty = node[child].$.IsProperty }
+									if (node[child].source) { source = JSON.stringify(node[child].source) }
+									if (node[child].data) { data = JSON.stringify(node[child].data) }
 									console.log('Found Event - ' + topicPath.toUpperCase())
 									//console.log('  IsProperty=' + IsProperty);
-									if (source.length > 0) {console.log('  Source=' + source);}
-									if (data.length > 0) {console.log('  Data=' + data);}
+									if (source.length > 0) { console.log('  Source=' + source); }
+									if (data.length > 0) { console.log('  Data=' + data); }
 									hasTopics = true
 									return
 								} else {
@@ -188,7 +228,7 @@ new Cam({
 				callback()
 			}
 		},
-		function(callback) {
+		function (callback) {
 			if (hasEvents && hasTopics && EVENT_MODE == EventMethodTypes.SUBSCRIBE) {
 				let uniqueID = 1001; // would increment this for every cam_obj object. It is used in the HTTP address sent to the LISTEN_PORT
 
@@ -211,11 +251,7 @@ new Cam({
 
 				cam_obj.on('event', (camMessage, xml) => {
 
-					const promiseGetSnapshotUri = promisify(cam_obj.getSnapshotUri).bind(cam_obj);
 
-					console.log(promiseGetSnapshotUri)
-
-					
 
 					// Extract Event Details
 					// Events have a Topic
@@ -262,7 +298,7 @@ new Cam({
 						sourceValue = null
 						console.log("WARNING: Source does not contain a simpleItem")
 					}
-                    
+
 					//KEY
 					if (camMessage.message.message.key) {
 						console.log('NOTE: Event has a Key')
@@ -271,26 +307,26 @@ new Cam({
 					// DATA (Name:Value)
 					if (camMessage.message.message.data && camMessage.message.message.data.simpleItem) {
 						if (Array.isArray(camMessage.message.message.data.simpleItem)) {
-							for (let x  = 0; x < camMessage.message.message.data.simpleItem.length; x++) {
+							for (let x = 0; x < camMessage.message.message.data.simpleItem.length; x++) {
 								let dataName = camMessage.message.message.data.simpleItem[x].$.Name
 								let dataValue = camMessage.message.message.data.simpleItem[x].$.Value
-								processEvent(eventTime,eventTopic,eventProperty,sourceName,sourceValue,dataName,dataValue)
+								processEvent(eventTime, eventTopic, eventProperty, sourceName, sourceValue, dataName, dataValue)
 							}
 						} else {
 							let dataName = camMessage.message.message.data.simpleItem.$.Name
 							let dataValue = camMessage.message.message.data.simpleItem.$.Value
-							processEvent(eventTime,eventTopic,eventProperty,sourceName,sourceValue,dataName,dataValue)
+							processEvent(eventTime, eventTopic, eventProperty, sourceName, sourceValue, dataName, dataValue)
 						}
 					} else if (camMessage.message.message.data && camMessage.message.message.data.elementItem) {
 						console.log("WARNING: Data contain an elementItem")
 						let dataName = 'elementItem'
 						let dataValue = JSON.stringify(camMessage.message.message.data.elementItem)
-						processEvent(eventTime,eventTopic,eventProperty,sourceName,sourceValue,dataName,dataValue)
+						processEvent(eventTime, eventTopic, eventProperty, sourceName, sourceValue, dataName, dataValue)
 					} else {
 						console.log("WARNING: Data does not contain a simpleItem or elementItem")
 						let dataName = null
 						let dataValue = null
-						processEvent(eventTime,eventTopic,eventProperty,sourceName,sourceValue,dataName,dataValue)
+						processEvent(eventTime, eventTopic, eventProperty, sourceName, sourceValue, dataName, dataValue)
 					}
 				})
 			}
@@ -324,16 +360,16 @@ function stripNamespaces(topic) {
 	return output
 }
 
-function processEvent(eventTime,eventTopic,eventProperty,sourceName,sourceValue,dataName,dataValue) {
+function processEvent(eventTime, eventTopic, eventProperty, sourceName, sourceValue, dataName, dataValue) {
 	let output = '';
 	output += `EVENT: ${eventTime.toJSON()} ${eventTopic}`
-	if (typeof(eventProperty) !== "undefined") {
+	if (typeof (eventProperty) !== "undefined") {
 		output += ` PROP:${eventProperty}`
 	}
-	if (typeof(sourceName) !== "undefined" && typeof(sourceValue) !== "undefined") {
+	if (typeof (sourceName) !== "undefined" && typeof (sourceValue) !== "undefined") {
 		output += ` SRC:${sourceName}=${sourceValue}`
 	}
-	if (typeof(dataName) !== "undefined" && typeof(dataValue) !== "undefined") {
+	if (typeof (dataName) !== "undefined" && typeof (dataValue) !== "undefined") {
 		output += ` DATA:${dataName}=${dataValue}`
 	}
 	console.log(output);
@@ -342,32 +378,29 @@ function processEvent(eventTime,eventTopic,eventProperty,sourceName,sourceValue,
 
 
 
-function sendToArteco(onvifInfo){
-
+function sendToArteco(onvifInfo) {
 
 	const data = {
 		"lane": "manageEvent",
 		"data": {
-				"ctx": "liveEvent",
-				"chId": 10,
-				"param": onvifInfo,
-				"brand": "Onvif",
-				"data": onvifInfo,
-				"image": "",
-				"cat": 200
+			"ctx": "liveEvent",
+			"chId": 4,
+			"param": onvifInfo,
+			"brand": "Onvif",
+			"data": onvifInfo,
+			//"image": "",
+			"cat": 214
 		}
 	}
-	
-	
-		request.post({
-			headers: {'content-type' : 'application/json'},
-			url:     'https://arteco1020.lan.omniaweb.cloud:496/api/v2/event',
-			body:    JSON.stringify(data)
-		}, function(error, response, body){
-			console.log(body);
-			console.log(response);
-	
-		});
-		
-	
-	}
+
+	request.post({
+		headers: { 'content-type': 'application/json' },
+		url: 'https://arteco1020.lan.omniaweb.cloud:496/api/v2/event',
+		body: JSON.stringify(data)
+	}, function (error, response, body) {
+		console.log(body);
+		console.log(response);
+
+	});
+
+}
